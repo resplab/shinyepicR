@@ -1,0 +1,1043 @@
+---
+title: "BIA_results"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+### Load required functions ###
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+  library(epicR)
+  library(tidyverse)
+  library(dplyr)
+  library(ggplot2)
+  library(gridExtra)
+  library(ggpubr)
+  library(knitr)
+  library(kableExtra)
+
+```
+
+
+### Global settings and input values ###
+
+Note: time_horizon is the simulation time horizon not the analysis time horizon.
+The analysis time horizon is 5 years (2022-2026) but since EPIC starts in 2015 the 
+modelling time horizon is 13 (only need 12 but run one more year than needed 
+because the final year results get messed up).
+The time horizon of the budget impact analysis can be entered by using the
+CD_start_cal_year and CD_end_cal_year parameters. 
+
+
+```{r global settings, echo=FALSE}
+
+
+  record_mode <- c(record_mode_none=0,
+                   record_mode_agent=1,
+                   record_mode_event=2,
+                   record_mode_some_event=3)
+
+  settings <- get_default_settings()
+  
+  settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
+  settings$n_base_agents <- 18162236 # 2015 estimate tuned to produce 2022 cohort size matching Stats Canada population estimates ### population parameter - could change to 10000 https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- settings$n_base_agents - 1 # -1 since it starts at id=0 
+  settings$update_continuous_outcomes_mode <- 1
+
+  
+
+  # * common input values ---------------------------------------------------
+  # these input values all remain constant across case detection scenarios
+  time_horizon <- 13 ### simulation starts in 2015 (2027 running 1 extra year, indexed from 0, should stay w 5y) ###modifiable 
+  yrs_btw_CD <- 20 # ensures no individual tested twice; change this if want to consider repeat testing
+  CD_start_cal_year <- 2022 # calendar start year
+  CD_start_year <- CD_start_cal_year - 2015 # simulation start year; default is 50 i.e. no case detection
+  CD_end_cal_year <- 2026
+  CD_end_year <- CD_end_cal_year - 2015 # default is 50 i.e. no case detection
+  discount_rate <- 0 # the default
+  med_adherence <- 0.7 # the default, adjust for sensitivity analysis ### modifiable in the app 
+  smoking_adherence <- 0.7 # adherence to NRT; the default, adjust for sensitivity analysis ###
+  p_case_detection <- c(0.05,0.1,0.15,0.2,0.25) # uptake parameter ###
+  p_correct_overdiagnosis <- 0.67 # did my own validation on this 
+  price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
+  
+  
+  
+  # set buffer sizes - below needed for identical pre-intervention simulation runs
+  settings$random_number_agent_refill <- 1
+  settings$runif_buffer_size <- time_horizon*70 
+  settings$rexp_buffer_size <- time_horizon*140 
+  settings$rnorm_buffer_size <- time_horizon*8 + 10 
+  settings$rgamma_buffer_size <- time_horizon + 2 
+
+```
+
+
+
+
+### Simulation function ###
+
+Function for simulating the case detection scenarios.
+
+Function inputs:
+  - CD_method : "None" "CDQ17" "CDQ195" "CDQ165" "FlowMeter" "FlowMeter_CDQ"
+  - eligibility_criteria : "All patients" "Symptomatic" "Eversmokers"
+
+Function output:
+  - overall : cumulative results across the entire time horizon (number agents, number diagnosed, and number eligible for case detection);
+              these are needed for table 3 of the main article
+  - results - annual results
+
+
+```{r functions, echo=FALSE}
+
+# * EPIC simulation ------------------------------------------------------------
+
+
+
+  BIA_simul <- function(CD_method, eligibility_criteria){
+
+    if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
+      print("Unknown case detection method")
+    }
+
+    ### run simulation
+    init_session(settings=settings)
+    input <- get_input()
+
+    if(eligibility_criteria=="All patients"){
+      min_age <- 40
+      min_pack_years <- 0
+      num_symptoms <- 0
+      CD_values <- input$values$diagnosis$case_detection_methods[,CD_method]
+    }else if (eligibility_criteria=="Symptomatic"){
+      min_age <- 40
+      min_pack_years <- 0
+      num_symptoms <- 1
+      CD_values <- input$values$diagnosis$case_detection_methods_symptomatic[,CD_method]
+    }else if (eligibility_criteria=="Eversmokers"){
+      min_age <- 50
+      min_pack_years <- 0.001
+      num_symptoms <- 0
+      CD_values <- input$values$diagnosis$case_detection_methods_eversmokers[,CD_method]
+    }else{
+      terminate_session()
+      return("Unknown eligibility criteria")
+    }
+
+    input$values$global_parameters$time_horizon <- time_horizon 
+    input$values$diagnosis$case_detection_start_end_yrs <- c(CD_start_year, CD_end_year)
+    input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
+    input$values$global_parameters$discount_cost <- discount_rate
+    input$values$medication$medication_adherence <- med_adherence
+    input$values$smoking$smoking_cessation_adherence <- smoking_adherence
+    if(CD_method!="None"){
+    input$values$diagnosis$p_case_detection[(CD_start_year+1):(CD_start_year+length(p_case_detection))] <- p_case_detection
+    }
+    input$values$diagnosis$p_correct_overdiagnosis <- p_correct_overdiagnosis
+
+    input$values$diagnosis$min_cd_age <- min_age
+    input$values$diagnosis$min_cd_pack_years <- min_pack_years
+    input$values$diagnosis$min_cd_symptoms <- num_symptoms
+
+    input$values$cost$cost_case_detection <- CD_values[3]*price_yr ###
+    input$values$diagnosis$logit_p_prevalent_diagnosis_by_sex["case_detection.None",] <- CD_values[1]
+    input$values$diagnosis$logit_p_diagnosis_by_sex["case_detection.None",] <- CD_values[1]
+    input$values$diagnosis$logit_p_overdiagnosis_by_sex["case_detection.None",] <- CD_values[2]
+
+    input$values$cost$bg_cost_by_stage <- input$values$cost$bg_cost_by_stage*price_yr ###
+    input$values$cost$cost_smoking_cessation <- input$values$cost$cost_smoking_cessation*price_yr ###
+    input$values$cost$exac_dcost <- input$values$cost$exac_dcost*price_yr ###
+    input$values$cost$cost_outpatient_diagnosis <- input$values$cost$cost_outpatient_diagnosis*price_yr ###
+    input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr ###
+    input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr ### this is where costs get changed 
+
+    set.seed(333)
+    run(input = input$values)
+
+    output <- Cget_output()
+    output_ex <- Cget_output_ex()
+
+    terminate_session()
+
+
+    # number alive
+    base <- data.frame(year=1:(time_horizon),
+                       criteria=eligibility_criteria,
+                       CD_method=CD_method,
+                       alive=rowSums(output_ex$n_alive_by_ctime_sex),
+                       sex=output_ex$n_alive_by_ctime_sex[,2], # is this male or female???
+                       smoke=output_ex$n_smoking_status_by_ctime[,2]
+    )
+
+    # number with COPD and diagnosed
+    diags <- data.frame(copd=rowSums(output_ex$n_COPD_by_ctime_severity[,2:5]),
+                        copd_sev=output_ex$n_COPD_by_ctime_severity[,4],
+                        diags_true=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5]), # diagnosed here is true diagnosed only
+                        diags_false=rowSums(output_ex$n_Overdiagnosed_by_ctime_sex),
+                        diags_total=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5])+rowSums(output_ex$n_Overdiagnosed_by_ctime_sex)
+    )
+
+    # health outcomes
+    healthOC <- data.frame(exacs=rowSums(output_ex$n_exac_by_ctime_severity),
+                           exacs_mild=output_ex$n_exac_by_ctime_severity[,1],
+                           exacs_mod=output_ex$n_exac_by_ctime_severity[,2],
+                           exacs_sev=output_ex$n_exac_by_ctime_severity[,3],
+                           exacs_vsev=output_ex$n_exac_by_ctime_severity[,4],
+                           deaths=rowSums(output_ex$n_exac_death_by_ctime_severity),
+                           NRT=output_ex$n_smoking_cessation_by_ctime)
+
+    # number of case detections
+    case_detection <- data.frame(case_detection=rowSums(output_ex$n_case_detection_by_ctime),
+                                 CD_true_pos=output_ex$n_case_detection_by_ctime[,3],
+                                 CD_false_pos=output_ex$n_case_detection_by_ctime[,2])
+
+    # costs
+    costs <- output_ex$annual_cost_ctime
+
+    hosps <- output_ex$n_exac_by_ctime_severity[,3:4]
+    hosps_cost <- input$values$cost$exac_dcost[3:4]
+    hosps_cost_yr <- rowSums(t(c(hosps_cost)*t(hosps)))
+
+    copd <- output_ex$n_COPD_by_ctime_severity[,2:5] # column 1 is gold grade 0 i.e. no copd
+    main_cost <- input$values$cost$bg_cost_by_stage[2:5]
+    copd_cost_yr <- rowSums(t(c(main_cost)*t(copd)))
+
+    caseds <- output_ex$n_case_detection_by_ctime
+    caseds_cost <- c(input$values$cost$cost_case_detection,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis)
+    caseds_cost_yr <- rowSums(t(c(caseds_cost)*t(caseds)))
+
+    medyrs <- output_ex$medication_time_by_ctime_class[,1:4]
+    medyrs_combos <- data.frame(SABA=medyrs[,1],
+                                LAMA=medyrs[,3]-medyrs[,2],
+                                LAMA_LABA=medyrs[,2]-medyrs[,4],
+                                ICS_LAMA_LABA=medyrs[,4])
+    meds_cost <- input$values$medication$medication_costs[c(2,5,7,15)]
+    meds_cost_yr <- rowSums(t(c(meds_cost)*t(medyrs_combos))) + 
+      output_ex$n_smoking_cessation_by_ctime*input$values$cost$cost_smoking_cessation
+
+    costs_subcs <- data.frame(cost_total=costs,
+                              cost_case_detection=caseds_cost_yr,
+                              cost_treat=meds_cost_yr,
+                              cost_hosp=hosps_cost_yr,
+                              cost_maint=copd_cost_yr)
+
+    results <- cbind(base,diags,healthOC,case_detection,costs_subcs)
+    
+    
+    
+    # overall results
+    overall <- data.frame(n_agents=output_ex$n_agents_CD,
+                          n_diagnosed=output_ex$n_diagnosed_true_CD,
+                          n_CD_eligible=output_ex$n_case_detection_eligible)
+    
+    
+    
+    return(list(overall=overall,results=results))
+
+    }
+  
+
+```
+
+
+
+### Run simulations ###
+
+Runs the case detection scenarios using the above function.
+All results are stored in a list then saved as an .Rda file. 
+Note: The final line can be commented out if saving as .Rda file is not necessary.
+
+THESE FUNCTIONS TAKE ABOUT 45 MINS TO RUN EACH!!
+
+```{r run simulations, echo=FALSE, message=FALSE}
+
+
+  # * S0: baseline scenario -------------------------------------------------
+  s10 <- BIA_simul(CD_method = "None", eligibility_criteria = "All patients")
+
+
+  # * S1: All patients ------------------------------------------------------
+  
+  s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
+  s1b <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "All patients")
+  s1c <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "All patients")
+
+  
+  # * S2: Symptomatic patients ----------------------------------------------
+  
+  #s20 <- BIA_simul(CD_method = "None", eligibility_criteria = "Symptomatic")
+  s2a <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Symptomatic")
+
+  
+  # * S3: Eversmokers + age >= 50 -------------------------------------------
+  
+  #s30 <- BIA_simul(CD_method = "None", eligibility_criteria = "Eversmokers")
+  s3a <- BIA_simul(CD_method = "CDQ195", eligibility_criteria = "Eversmokers")
+  s3b <- BIA_simul(CD_method = "CDQ165", eligibility_criteria = "Eversmokers")
+  s3c <- BIA_simul(CD_method = "FlowMeter", eligibility_criteria = "Eversmokers")
+  s3d <- BIA_simul(CD_method = "FlowMeter_CDQ", eligibility_criteria = "Eversmokers")
+
+  
+  # save all results
+  alldat <- list(s10=s10,s1a=s1a,s1b=s1b,s1c=s1c,s2a=s2a,s3a=s3a,s3b=s3b,s3c=s3c,s3d=s3d)
+  saveRDS(alldat, "results_base_fixsim.Rda") ###can comment this out 
+  
+
+```
+
+
+
+### Load and prepare data ###
+
+Note: The first line can be commented out if data was not saved in the above section.
+
+Results from different strategies combined and prepared for analysis.
+
+
+
+```{r load and prepare data, echo=FALSE}
+
+# Read in data ------------------------------------------------------------
+  
+  alldat <- readRDS("results_base_fixsim.Rda") ###run this block and just look at the output 
+
+  
+# * prepare data ----------------------------------------------------------
+
+  # overall output
+  s10o <- alldat$s10$overall %>% mutate(scenario="s10") %>% relocate(scenario)
+  s1ao <- alldat$s1a$overall %>% mutate(scenario="s1a") %>% relocate(scenario)
+  s1bo <- alldat$s1b$overall %>% mutate(scenario="s1b") %>% relocate(scenario)
+  s1co <- alldat$s1c$overall %>% mutate(scenario="s1c") %>% relocate(scenario)
+  s2ao <- alldat$s2a$overall %>% mutate(scenario="s2a") %>% relocate(scenario)
+  s3ao <- alldat$s3a$overall %>% mutate(scenario="s3a") %>% relocate(scenario)
+  s3bo <- alldat$s3b$overall %>% mutate(scenario="s3b") %>% relocate(scenario)
+  s3co <- alldat$s3c$overall %>% mutate(scenario="s3c") %>% relocate(scenario)
+  s3do <- alldat$s3d$overall %>% mutate(scenario="s3d") %>% relocate(scenario)
+  
+  all_overall <- bind_rows(s10o,s1ao,s1bo,s1co,s2ao,s3ao,s3bo,s3co,s3do) # combine
+  
+  
+  
+  # set baseline year and case detection years
+  baseline_yr <- CD_start_year+1-1
+  CD_yrs <- (CD_start_year+1):(CD_start_year+length(p_case_detection))
+  
+  # year-by-year results
+  s10 <- alldat$s10$results %>% mutate(scenario="s10", .after=year)
+  s1a <- alldat$s1a$results %>% mutate(scenario="s1a", .after=year)
+  s1b <- alldat$s1b$results %>% mutate(scenario="s1b", .after=year)
+  s1c <- alldat$s1c$results %>% mutate(scenario="s1c", .after=year)
+  
+  s2a <- alldat$s2a$results %>% mutate(scenario="s2a", .after=year)
+  
+  s3a <- alldat$s3a$results %>% mutate(scenario="s3a", .after=year)
+  s3b <- alldat$s3b$results %>% mutate(scenario="s3b", .after=year)
+  s3c <- alldat$s3c$results %>% mutate(scenario="s3c", .after=year)
+  s3d <- alldat$s3d$results %>% mutate(scenario="s3d", .after=year)
+  
+  
+  # combine all year-by-year results
+  all_results <- bind_rows(s10,s1a,s1b,s1c,s2a,s3a,s3b,s3c,s3d) %>% 
+    filter(year %in% c(baseline_yr,CD_yrs)) %>% # remove unnecessary data
+    mutate(year=year-baseline_yr) %>% # renumber so baseline year = 0 then 1:5 case detection years
+    mutate(copd_prev=copd/alive*100, .after=copd) %>%
+    mutate(diags_true_prev=diags_true/alive*100, .after=diags_true) %>%
+    mutate(diags_false_prev=diags_false/(alive-copd)*100, .after=diags_false) %>%
+    mutate(diags_total_prev=diags_total/alive*100, .after=diags_total) %>%
+    mutate(cost_total_pp=cost_total/alive) %>%
+    mutate(cost_case_detection_pp=cost_case_detection/alive) %>%
+    mutate(cost_treat_pp=cost_treat/alive) %>%
+    mutate(cost_hosp_pp=cost_hosp/alive) %>%
+    mutate(cost_maint_pp=cost_maint/alive)
+
+
+```
+
+
+### Case detection performance results ###
+
+Table of results over time horizon for non-monetary results of case detection strategies.
+This table is used to produce table 3 of main article. ###don't need this table for the app
+
+```{r performance results, echo=FALSE}
+
+
+# number eligible / tested / true positives / false positives
+overall <- all_overall %>% 
+  inner_join(
+    all_results %>% 
+      #filter(year>0) %>% 
+      group_by(scenario) %>% 
+      summarize(case_detection=sum(case_detection),
+                true_positive=sum(CD_true_pos),
+                false_positive=sum(CD_false_pos),
+                exacs=sum(exacs)),
+    by="scenario"
+  ) %>% 
+  mutate(percent_pop_CD=case_detection/n_agents*100, .after=case_detection) %>% 
+  mutate(percent_eligible_CD=case_detection/n_CD_eligible*100, .after=percent_pop_CD) %>%   
+  mutate(percent_eligible=n_CD_eligible/n_agents*100, .after=n_CD_eligible) %>% 
+  mutate(true_positive_rate=true_positive/case_detection*100, .after=true_positive) %>% 
+  mutate(false_positive_rate=false_positive/case_detection*100, .after=false_positive)
+
+overall
+
+
+```
+
+
+### Budget impact results function ###
+
+Function to produce BIA table comparing two scenarios.
+
+Inputs:
+  - results : the table with all combined results in - 'all_results' in this case
+  - base_scenario : baseline scenario - s10 in this case
+  - alt_scenario : intervention scenario - either s1a,s1b,s1c,s2a,s3a,s3b,s3c,s3d
+  
+Output:
+  - table - BIA table fo results comparing two scenarios
+
+
+```{r budget impact function, echo=FALSE, message=FALSE, warning=FALSE}
+
+  # * BIA table - compare two scenarios ------------------------------------- ###need to run this for next block 
+  
+  bia_table <- function(results,base_scenario,alt_scenario){
+    
+    base_table <- results %>%
+      filter(scenario==base_scenario) %>%
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
+    
+    alt_table <- results %>%
+      filter(scenario==alt_scenario) %>%
+      select(year,scenario,criteria,CD_method,cost_total:cost_maint) %>% 
+      mutate(cost_other=cost_total-cost_case_detection-cost_hosp-cost_treat)
+    
+    bia_table <- data.frame(year=0:length(p_case_detection),
+                            scenario=alt_scenario,
+                            criteria=alt_table$criteria[1],
+                            CD_method=alt_table$CD_method[1],
+                            bia_total=base_table$cost_total-alt_table$cost_total,
+                            bia_case_detection=base_table$cost_case_detection-alt_table$cost_case_detection,
+                            bia_treat=base_table$cost_treat-alt_table$cost_treat,
+                            bia_hosp=base_table$cost_hosp-alt_table$cost_hosp,
+                            bia_maint=base_table$cost_maint-alt_table$cost_maint,
+                            bia_other=base_table$cost_other-alt_table$cost_other)
+    
+    table <- bind_rows(
+      base_table %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+      ,
+      alt_table %>%
+        pivot_longer(cols=cost_total:cost_other,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+      ,
+      bia_table %>%
+        pivot_longer(cols=bia_total:bia_other,names_to="cost_group",values_to="CAD") %>%
+        pivot_wider(names_from=year,names_prefix="year_",values_from=CAD)
+    )
+    
+    return(table)
+    
+  }
+
+```
+
+
+
+### Budget impact results ###
+
+Results tables produced using above function to compare each scenario with baseline.
+Results tables then combined to produce figures.
+
+The plots aren't very readable in the RStudio window but I found the font size 
+good when saved as a .tiff while with the following values:
+width=6000,height=8400,units="px",dpi=600
+
+
+```{r BIA results, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# run budget impact function
+bia_s10_s1a <- bia_table(all_results,"s10","s1a")
+bia_s10_s1b <- bia_table(all_results,"s10","s1b")
+bia_s10_s1c <- bia_table(all_results,"s10","s1c")
+bia_s10_s2a <- bia_table(all_results,"s10","s2a")
+bia_s10_s3a <- bia_table(all_results,"s10","s3a")
+bia_s10_s3b <- bia_table(all_results,"s10","s3b")
+bia_s10_s3c <- bia_table(all_results,"s10","s3c")
+bia_s10_s3d <- bia_table(all_results,"s10","s3d")
+
+
+bia_all_long <- bind_rows(bia_s10_s1a,
+                          bia_s10_s1b,
+                          bia_s10_s1c,
+                          bia_s10_s2a,
+                          bia_s10_s3a,
+                          bia_s10_s3b,
+                          bia_s10_s3c,
+                          bia_s10_s3d) %>% 
+  distinct() %>% 
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5")) %>% 
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d")) %>% 
+  mutate(year=as.numeric(year)+2020)
+
+
+
+
+# total cost and BI over time horizon - used to produce table 4 of main article
+bia_total <- bia_all_long %>% 
+  filter(year!="2021") %>% 
+  group_by(scenario,cost_group) %>% 
+  summarize(total_CAD=sum(CAD)) %>% 
+  pivot_wider(names_from=scenario,values_from=total_CAD) 
+
+
+
+
+# cost plots. NOTE: these are costs not budget impact; these were not used int he final paper
+p1 <- ggplot(bia_all_long %>% filter(cost_group=="cost_total"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Total cost (million $)") + xlab("Year") +
+    geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") 
+
+p2 <- ggplot(bia_all_long %>% filter(cost_group=="cost_case_detection"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Case detection cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p3 <- ggplot(bia_all_long %>% filter(cost_group=="cost_treat"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Treatment cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p4 <- ggplot(bia_all_long %>% filter(cost_group=="cost_hosp"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Hospitalization cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p5 <- ggplot(bia_all_long %>% filter(cost_group=="cost_other"),
+             aes(x=year,y=CAD/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Outpatient care cost (million $)") + xlab("Year") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+
+
+# budget impact plots plots
+p6 <- ggplot(bia_all_long %>% filter(cost_group=="bia_total" & scenario!="s10"), ###total budget impact plot (of fig 3 of BIA paper - p6 to p10 are the ones we want. Can delete p1 to p5 and code to create table 3)
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02),limits=c(0,131)) +
+  ylab("Additional total costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2),
+        legend.position = "none") 
+
+p7 <- ggplot(bia_all_long %>% filter(cost_group=="bia_case_detection" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(breaks=seq(0,140,25),expand=c(0.02,0.02),limits=c(0,131)) +
+  ylab("Case detection costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p8 <- ggplot(bia_all_long %>% filter(cost_group=="bia_treat" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Treatment costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() +
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p9 <- ggplot(bia_all_long %>% filter(cost_group=="bia_hosp" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Hospitalisation costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+p10 <- ggplot(bia_all_long %>% filter(cost_group=="bia_other" & scenario!="s10"),
+             aes(x=year,y=CAD*(-1)/1000000,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_continuous(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Outpatient care costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  theme_bw() + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
+        legend.text=element_text(size=12),legend.title=element_text(size=12),
+        plot.margin = margin(2, 10, 0, 2)) + 
+  guides(colour = guide_legend(nrow = 1)) 
+
+
+
+
+# print results
+
+# total budget impact table (table 4 of main article)
+bia_total 
+
+# total costs combined plot (not used in main article)
+ggarrange(p1,
+          ggarrange(p2,p3,p4,p5,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
+          nrow=2
+)
+
+
+# budget impact combined plot (figure 2 of main article)
+ggarrange(p6,
+          ggarrange(p7,p8,p9,p10,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
+          nrow=2
+)
+
+
+### can delete health outcomes plots and sensitivity analyses plots below 
+
+
+
+```
+
+
+
+
+### Health outcomes plots ###
+
+The below code creates plots for overdiagnosis and exacerbation results.
+It's old code, we didn't use any of it in the final article so it hasn't been
+"neatened" but I've left it here in case it's of any use. 
+
+
+```{r health outcomes results, echo=FALSE}
+
+# * health outcomes results -----------------------------------------------
+
+
+all_results_ho <- all_results %>%
+  select(year,scenario,criteria,CD_method,copd_sev,diags_true,diags_false,exacs,exacs_mild,exacs_mod,exacs_sev,exacs_vsev,deaths) %>%
+  pivot_longer(cols=copd_sev:deaths,names_to="ho_group",values_to="count") %>%
+  pivot_wider(names_from=year,names_prefix="year_",values_from=count)
+
+all_results_ho_long <- all_results_ho %>%
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="count") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
+
+
+
+
+p1 <- ggplot(all_results_ho_long %>% filter(ho_group=="copd_sev"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Severe COPD") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p2 <- ggplot(all_results_ho_long %>% filter(ho_group=="diags_true"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("True COPD diagnoses") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p3 <- ggplot(all_results_ho_long %>% filter(ho_group=="diags_false"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Overdiagnosis") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p4 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Total exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p5 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_mild"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Mild exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p6 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_mod"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Moderate exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p7 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_sev"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Severe exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p8 <- ggplot(all_results_ho_long %>% filter(ho_group=="exacs_vsev"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("very severe exacerbations") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+p9 <- ggplot(all_results_ho_long %>% filter(ho_group=="deaths"),
+             aes(x=year,y=count,group=scenario,col=scenario)) +
+  scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Deaths") +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
+
+grid.arrange(p2,p3,nrow=2)
+grid.arrange(p5,p6,p7,p4,nrow=2)
+
+
+
+
+
+ggplot(all_results_ho_long %>% filter(ho_group=="exacs" & (scenario=="s10" | scenario=="s1a")),
+             aes(x=year,y=count,group=scenario,fill=scenario)) +
+  #scale_color_manual(values=c("#808080", "#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9")) +
+  ylab("Total exacerbations") +
+  geom_bar(stat = "identity", position=position_dodge()) +
+  theme_bw()
+
+
+all_results_ho_long %>%  filter(scenario=="s10" | scenario=="s1a") %>% 
+       filter(grepl('exac', ho_group)) %>% 
+       select(-criteria) %>% select(-CD_method) %>% 
+       pivot_wider(names_from=scenario, values_from=count) %>% 
+       mutate(diff=s10-s1a) %>% 
+       select(-s10) %>% select(-s1a) %>% 
+       pivot_wider(names_from=ho_group,values_from=diff) %>% 
+       filter(year!="2021")
+
+
+
+
+
+```
+
+
+
+
+
+### Sensitivity analysis function ###
+
+This function takes simulation results and outputs in form needed for sensitivity analysis.
+Note: need the bia_table function saved.
+
+Inputs:
+  - data : combined outputs of all strategies for given parameter values / sensitivity
+           scenario (the output from 'run simulations' section)
+           
+(so to get the right input for this function, go back to the start, change parameter 
+values for sensitivity analysis e.g. reduce medication adherence, then run the 
+'run simulations' section, and save as an .Rda file).           
+           
+Outputs:
+  - overall : results from entire time horizon
+  - bia_total : combined budget impact results
+
+```{r health outcomes results, echo=FALSE}
+
+
+bia_all_results <- function(data){
+  
+  
+  # overall output
+  s10o <- data$s10$overall %>% mutate(scenario="s10") %>% relocate(scenario)
+  s1ao <- data$s1a$overall %>% mutate(scenario="s1a") %>% relocate(scenario)
+  s1bo <- data$s1b$overall %>% mutate(scenario="s1b") %>% relocate(scenario)
+  s1co <- data$s1c$overall %>% mutate(scenario="s1c") %>% relocate(scenario)
+  s2ao <- data$s2a$overall %>% mutate(scenario="s2a") %>% relocate(scenario)
+  s3ao <- data$s3a$overall %>% mutate(scenario="s3a") %>% relocate(scenario)
+  s3bo <- data$s3b$overall %>% mutate(scenario="s3b") %>% relocate(scenario)
+  s3co <- data$s3c$overall %>% mutate(scenario="s3c") %>% relocate(scenario)
+  s3do <- data$s3d$overall %>% mutate(scenario="s3d") %>% relocate(scenario)
+  
+  all_overall <- bind_rows(s10o,s1ao,s1bo,s1co,s2ao,s3ao,s3bo,s3co,s3do) # combine
+  
+  
+  
+  # set baseline year and case detection years
+  baseline_yr <- CD_start_year+1-1
+  CD_yrs <- (CD_start_year+1):(CD_start_year+length(p_case_detection))
+  
+  # year-by-year results
+  s10 <- data$s10$results %>% mutate(scenario="s10", .after=year)
+  s1a <- data$s1a$results %>% mutate(scenario="s1a", .after=year)
+  s1b <- data$s1b$results %>% mutate(scenario="s1b", .after=year)
+  s1c <- data$s1c$results %>% mutate(scenario="s1c", .after=year)
+  
+  #s20 <- s20 %>% mutate(scenario="s20", .after=year)
+  s2a <- data$s2a$results %>% mutate(scenario="s2a", .after=year)
+  
+  #s30 <- s30 %>% mutate(scenario="s30", .after=year)
+  s3a <- data$s3a$results %>% mutate(scenario="s3a", .after=year)
+  s3b <- data$s3b$results %>% mutate(scenario="s3b", .after=year)
+  s3c <- data$s3c$results %>% mutate(scenario="s3c", .after=year)
+  s3d <- data$s3d$results %>% mutate(scenario="s3d", .after=year)
+  
+  
+  # combine all year-by-year results
+  all_results <- bind_rows(s10,s1a,s1b,s1c,s2a,s3a,s3b,s3c,s3d) %>% 
+    filter(year %in% c(baseline_yr,CD_yrs)) %>% # remove unnecessary data
+    mutate(year=year-baseline_yr) %>% # renumber so baseline year = 0 then 1:5 case detection years
+    mutate(copd_prev=copd/alive*100, .after=copd) %>%
+    mutate(diags_true_prev=diags_true/alive*100, .after=diags_true) %>%
+    mutate(diags_false_prev=diags_false/(alive-copd)*100, .after=diags_false) %>%
+    mutate(diags_total_prev=diags_total/alive*100, .after=diags_total) %>%
+    mutate(cost_total_pp=cost_total/alive) %>%
+    mutate(cost_case_detection_pp=cost_case_detection/alive) %>%
+    mutate(cost_treat_pp=cost_treat/alive) %>%
+    mutate(cost_hosp_pp=cost_hosp/alive) %>%
+    mutate(cost_maint_pp=cost_maint/alive)
+  
+
+
+  
+  # overall results
+  overall <- all_overall %>% 
+    inner_join(
+      all_results %>% 
+        group_by(scenario) %>% 
+        summarize(case_detection=sum(case_detection),
+                  true_positive=sum(CD_true_pos),
+                  false_positive=sum(CD_false_pos),
+                  exacs=sum(exacs)),
+      by="scenario"
+    ) %>% 
+    mutate(percent_pop_CD=case_detection/n_agents*100, .after=case_detection) %>% 
+    mutate(percent_eligible_CD=case_detection/n_CD_eligible*100, .after=percent_pop_CD) %>%   
+    mutate(percent_eligible=n_CD_eligible/n_agents*100, .after=n_CD_eligible) %>% 
+    mutate(true_positive_rate=true_positive/case_detection*100, .after=true_positive) %>% 
+    mutate(false_positive_rate=false_positive/case_detection*100, .after=false_positive)
+  
+  
+  
+  # run BIA function
+  bia_s10_s1a <- bia_table(all_results,"s10","s1a")
+  bia_s10_s1b <- bia_table(all_results,"s10","s1b")
+  bia_s10_s1c <- bia_table(all_results,"s10","s1c")
+  bia_s10_s2a <- bia_table(all_results,"s10","s2a")
+  bia_s10_s3a <- bia_table(all_results,"s10","s3a")
+  bia_s10_s3b <- bia_table(all_results,"s10","s3b")
+  bia_s10_s3c <- bia_table(all_results,"s10","s3c")
+  bia_s10_s3d <- bia_table(all_results,"s10","s3d")
+  
+  bia_all_long <- bind_rows(bia_s10_s1a,
+                          bia_s10_s1b,
+                          bia_s10_s1c,
+                          bia_s10_s2a,
+                          bia_s10_s3a,
+                          bia_s10_s3b,
+                          bia_s10_s3c,
+                          bia_s10_s3d) %>% 
+  distinct() %>% 
+  pivot_longer(cols=year_0:year_5,names_to="year",values_to="CAD") %>% 
+  mutate(year=fct_recode(year,"2021"="year_0","2022"="year_1","2023"="year_2","2024"="year_3","2025"="year_4","2026"="year_5"))
+  
+  
+  # final desired output
+  bia_total <- bia_all_long %>% 
+    filter(year!="2021") %>% 
+    group_by(scenario,cost_group) %>% 
+    summarize(total_CAD=sum(CAD)) %>% 
+    pivot_wider(names_from=scenario,values_from=total_CAD) 
+  
+  
+  
+  return(list(overall=overall,bia_total=bia_total))
+  
+}
+
+```
+
+
+
+### Sensitivity analysis results ###
+
+Below is the code used to produce figure 3 in the main article. 
+
+```{r}
+
+
+SA_base <- bia_all_results(data=readRDS("results_base_fixsim.Rda")) # reference
+SA_MA03 <- bia_all_results(data=readRDS("results_MA03_fixsim.Rda")) # medication adherence 30%
+SA_MA05 <- bia_all_results(data=readRDS("results_MA05_fixsim.Rda")) # medication adherence 50%
+SA_NRT <- bia_all_results(data=readRDS("results_NRT_fixsim.Rda")) # remove NRT
+SA_CDUlow <- bia_all_results(data=readRDS("results_CDUl_fixsim.Rda")) # low case detection uptake
+SA_CDUhigh <- bia_all_results(data=readRDS("results_CDUh_fixsim.Rda")) # high case detection uptake
+
+
+bi_SA_base <- SA_base$bia_total %>% mutate(case="base", .before=cost_group)
+bi_SA_MA03 <- SA_MA03$bia_total %>% mutate(case="MA03", .before=cost_group)
+bi_SA_MA05 <- SA_MA05$bia_total %>% mutate(case="MA05", .before=cost_group)
+bi_SA_NRT <- SA_NRT$bia_total %>% mutate(case="NRT", .before=cost_group)
+bi_SA_CDUlow <- SA_CDUlow$bia_total %>% mutate(case="CDUlow", .before=cost_group)
+bi_SA_CDUhigh <- SA_CDUhigh$bia_total %>% mutate(case="CDUhigh", .before=cost_group)
+
+
+bia_SA_combine <- bind_rows(bi_SA_base, bi_SA_NRT, bi_SA_MA03, bi_SA_MA05, bi_SA_CDUlow, bi_SA_CDUhigh) %>%
+  pivot_longer(cols=s10:s3d, names_to="scenario",values_to="CAD") %>% 
+  mutate(case=factor(case,levels=c("CDUlow","CDUhigh","base","NRT","MA05","MA03"))) %>%  
+  mutate(case=fct_recode(case,"CDU low"="CDUlow","CDU high"="CDUhigh","Reference"="base","No NRT"="NRT","50% MA"="MA05","30% MA"="MA03")) %>%  
+  mutate(scenario=fct_recode(scenario,"S10"="s10","S1a"="s1a","S1b"="s1b","S1c"="s1c","S2a"="s2a","S3a"="s3a","S3b"="s3b","S3c"="s3c","S3d"="s3d"))
+
+
+
+
+# budget impact sensitivity results
+
+p1 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_total" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  ylab("Total costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_y_continuous(breaks=seq(0,610,100), expand=c(0.02,0.02)) +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(legend.position="none",axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+
+p2 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_case_detection" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_discrete(expand=c(0.01,0.01)) +
+  ylab("Case detection costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  scale_y_continuous(breaks=seq(0,610,100),expand=c(0.02,0.02)) +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+
+p3 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_treat" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_y_continuous(breaks=seq(0,100,25),expand=c(0.02,0.02)) +
+  ylab("Treatment costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+
+p4 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_hosp" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Hospitalisation costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+
+p5 <- ggplot(bia_SA_combine %>% filter(cost_group=="bia_other" & scenario!="S10"),
+             aes(x=case, y=-CAD/1000000, group=scenario, col=scenario)) +
+  scale_color_manual(values=c("#F5594E", "#E7861B", "#95A900", "#00B81F", "#00C0B8", "#00A5FF", "#BF80FF", "#FF61C9"), name="Scenario") +
+  scale_x_discrete(expand=c(0.01,0.01)) +
+  scale_y_continuous(expand=c(0.02,0.02)) +
+  ylab("Outpatient care costs (million $)") + xlab("") +
+  geom_point() +
+  geom_line() +
+  geom_vline(xintercept="Reference", linetype="dashed", color = "darkgrey") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=45,hjust=1,vjust=1))
+
+
+
+
+# print figure
+
+ggarrange(p1,
+          ggarrange(p2,p3,p4,p5,ncol=2,nrow=2,common.legend=TRUE,legend="bottom"),
+          nrow=2
+)
+
+
+
+
+
+
+
+```
+

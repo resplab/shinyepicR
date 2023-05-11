@@ -1,0 +1,340 @@
+---
+title: "BIA results - changing costs"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+### Load required functions ###
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+  library(epicR)
+  library(tidyverse)
+  library(dplyr)
+  library(ggplot2)
+  library(gridExtra)
+  library(ggpubr)
+  library(knitr)
+  library(kableExtra)
+
+```
+
+
+### Global settings and input values ###
+
+Note: time_horizon is the simulation time horizon not the analysis time horizon.
+The analysis time horizon is 5 years (2022-2026) but since EPIC starts in 2015 the 
+modelling time horizon is 13 (only need 12 but run one more year than needed 
+because the final year results get messed up).
+The time horizon of the budget impact analysis can be entered by using the
+CD_start_cal_year and CD_end_cal_year parameters. 
+
+
+```{r global settings, echo=FALSE}
+
+
+  record_mode <- c(record_mode_none=0,
+                   record_mode_agent=1,
+                   record_mode_event=2,
+                   record_mode_some_event=3)
+
+  settings <- get_default_settings()
+  
+  settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
+  settings$n_base_agents <- 10000 # 2015 estimate tuned to produce 2022 cohort size matching Stats Canada population estimates https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- settings$n_base_agents - 1 # -1 since it starts at id=0 
+  settings$update_continuous_outcomes_mode <- 1
+
+  
+
+  # * common input values ---------------------------------------------------
+  # these input values all remain constant across case detection scenarios
+  time_horizon <- 13
+  yrs_btw_CD <- 20 # ensures no individual tested twice; change this if want to consider repeat testing
+  CD_start_cal_year <- 2022 # calendar start year
+  CD_start_year <- CD_start_cal_year - 2015 # simulation start year; default is 50 i.e. no case detection
+  CD_end_cal_year <- 2026
+  CD_end_year <- CD_end_cal_year - 2015 # default is 50 i.e. no case detection
+  discount_rate <- 0 # the default
+  med_adherence <- 0.7 # the default, adjust for sensitivity analysis
+  smoking_adherence <- 0.7 # adherence to NRT; the default, adjust for sensitivity analysis
+  p_case_detection <- c(0.05,0.1,0.15,0.2,0.25) # uptake parameter
+  p_correct_overdiagnosis <- 0.67 # did my own validation on this
+  price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
+  
+  
+  
+  # set buffer sizes - below needed for identical pre-intervention simulation runs
+  settings$random_number_agent_refill <- 1
+  settings$runif_buffer_size <- time_horizon*70 
+  settings$rexp_buffer_size <- time_horizon*140 
+  settings$rnorm_buffer_size <- time_horizon*8 + 10 
+  settings$rgamma_buffer_size <- time_horizon + 2 
+
+```
+
+
+
+
+### Simulation function ###
+
+Function for simulating the case detection scenarios.
+
+Function inputs:
+  - CD_method : "None" "CDQ17" "CDQ195" "CDQ165" "FlowMeter" "FlowMeter_CDQ"
+  - eligibility_criteria : "All patients" "Symptomatic" "Eversmokers"
+
+Function output:
+  - overall : cumulative results across the entire time horizon (number agents, number diagnosed, and number eligible for case detection);
+              these are needed for table 3 of the main article
+  - results - annual results
+
+
+```{r functions, echo=FALSE}
+
+# * EPIC simulation ------------------------------------------------------------
+
+
+
+  BIA_simul <- function(CD_method, eligibility_criteria){
+    
+    CD_method="CDQ17" ; eligibility_criteria="All patients"
+
+    if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
+      print("Unknown case detection method")
+    }
+
+    ### run simulation
+    init_session(settings=settings)
+    input <- get_input()
+
+    if(eligibility_criteria=="All patients"){
+      min_age <- 40
+      min_pack_years <- 0
+      num_symptoms <- 0
+      CD_values <- input$values$diagnosis$case_detection_methods[,CD_method]
+    }else if (eligibility_criteria=="Symptomatic"){
+      min_age <- 40
+      min_pack_years <- 0
+      num_symptoms <- 1
+      CD_values <- input$values$diagnosis$case_detection_methods_symptomatic[,CD_method]
+    }else if (eligibility_criteria=="Eversmokers"){
+      min_age <- 50
+      min_pack_years <- 0.001
+      num_symptoms <- 0
+      CD_values <- input$values$diagnosis$case_detection_methods_eversmokers[,CD_method]
+    }else{
+      terminate_session()
+      return("Unknown eligibility criteria")
+    }
+
+    input$values$global_parameters$time_horizon <- time_horizon 
+    input$values$diagnosis$case_detection_start_end_yrs <- c(CD_start_year, CD_end_year)
+    input$values$diagnosis$years_btw_case_detection <- yrs_btw_CD
+    input$values$global_parameters$discount_cost <- discount_rate
+    input$values$medication$medication_adherence <- med_adherence
+    input$values$smoking$smoking_cessation_adherence <- smoking_adherence
+    if(CD_method!="None"){
+    input$values$diagnosis$p_case_detection[(CD_start_year+1):(CD_start_year+length(p_case_detection))] <- p_case_detection
+    }
+    input$values$diagnosis$p_correct_overdiagnosis <- p_correct_overdiagnosis
+
+    input$values$diagnosis$min_cd_age <- min_age
+    input$values$diagnosis$min_cd_pack_years <- min_pack_years
+    input$values$diagnosis$min_cd_symptoms <- num_symptoms
+
+    input$values$cost$cost_case_detection <- CD_values[3]*price_yr
+    input$values$diagnosis$logit_p_prevalent_diagnosis_by_sex["case_detection.None",] <- CD_values[1]
+    input$values$diagnosis$logit_p_diagnosis_by_sex["case_detection.None",] <- CD_values[1]
+    input$values$diagnosis$logit_p_overdiagnosis_by_sex["case_detection.None",] <- CD_values[2]
+
+    input$values$cost$bg_cost_by_stage <- input$values$cost$bg_cost_by_stage*price_yr
+    input$values$cost$cost_smoking_cessation <- input$values$cost$cost_smoking_cessation*price_yr
+    input$values$cost$exac_dcost <- input$values$cost$exac_dcost*price_yr
+    input$values$cost$cost_outpatient_diagnosis <- input$values$cost$cost_outpatient_diagnosis*price_yr
+    input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
+    input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
+
+    set.seed(333)
+    run(input = input$values)
+
+    output <- Cget_output()
+    output_ex <- Cget_output_ex()
+
+    terminate_session()
+
+
+    # number alive
+    base <- data.frame(year=1:(time_horizon),
+                       criteria=eligibility_criteria,
+                       CD_method=CD_method,
+                       alive=rowSums(output_ex$n_alive_by_ctime_sex),
+                       sex=output_ex$n_alive_by_ctime_sex[,2],
+                       smoke=output_ex$n_smoking_status_by_ctime[,2]
+    )
+
+    # number with COPD and diagnosed
+    diags <- data.frame(copd=rowSums(output_ex$n_COPD_by_ctime_severity[,2:5]),
+                        copd_GOLD1=output_ex$n_COPD_by_ctime_severity[,2],
+                        copd_GOLD2=output_ex$n_COPD_by_ctime_severity[,3],
+                        copd_GOLD3=output_ex$n_COPD_by_ctime_severity[,4],
+                        copd_GOLD4=output_ex$n_COPD_by_ctime_severity[,5],
+                        diags_true=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5]), # diagnosed here is true diagnosed only
+                        diags_false=rowSums(output_ex$n_Overdiagnosed_by_ctime_sex),
+                        diags_total=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5])+rowSums(output_ex$n_Overdiagnosed_by_ctime_sex)
+    )
+
+    # health outcomes
+    healthOC <- data.frame(exacs=rowSums(output_ex$n_exac_by_ctime_severity),
+                           exacs_mild=output_ex$n_exac_by_ctime_severity[,1],
+                           exacs_mod=output_ex$n_exac_by_ctime_severity[,2],
+                           exacs_sev=output_ex$n_exac_by_ctime_severity[,3],
+                           exacs_vsev=output_ex$n_exac_by_ctime_severity[,4],
+                           deaths=rowSums(output_ex$n_exac_death_by_ctime_severity),
+                           NRT=output_ex$n_smoking_cessation_by_ctime)
+
+    # number of case detections
+    case_detection <- data.frame(case_detection=rowSums(output_ex$n_case_detection_by_ctime),
+                                 CD_true_pos=output_ex$n_case_detection_by_ctime[,3],
+                                 CD_false_pos=output_ex$n_case_detection_by_ctime[,2])
+
+    # costs
+    costs <- output_ex$annual_cost_ctime
+
+    hosps <- output_ex$n_exac_by_ctime_severity[,3:4]
+    hosps_cost <- input$values$cost$exac_dcost[3:4]
+    hosps_cost_yr <- rowSums(t(c(hosps_cost)*t(hosps)))
+
+    copd <- output_ex$n_COPD_by_ctime_severity[,2:5] # column 1 is gold grade 0 i.e. no copd
+    main_cost <- input$values$cost$bg_cost_by_stage[2:5]
+    copd_cost_yr <- rowSums(t(c(main_cost)*t(copd)))
+
+    caseds <- output_ex$n_case_detection_by_ctime
+    caseds_cost <- c(input$values$cost$cost_case_detection,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis,
+                     input$values$cost$cost_case_detection+input$values$cost$cost_outpatient_diagnosis)
+    caseds_cost_yr <- rowSums(t(c(caseds_cost)*t(caseds)))
+
+    medyrs <- output_ex$medication_time_by_ctime_class[,1:4]
+    medyrs_combos <- data.frame(SABA=medyrs[,1],
+                                LAMA=medyrs[,3]-medyrs[,2],
+                                LAMA_LABA=medyrs[,2]-medyrs[,4],
+                                ICS_LAMA_LABA=medyrs[,4])
+    meds_cost <- input$values$medication$medication_costs[c(2,5,7,15)]
+    meds_cost_yr <- rowSums(t(c(meds_cost)*t(medyrs_combos))) + 
+      output_ex$n_smoking_cessation_by_ctime*input$values$cost$cost_smoking_cessation
+
+    costs_subcs <- data.frame(cost_total=costs,
+                              cost_case_detection=caseds_cost_yr,
+                              cost_treat=meds_cost_yr,
+                              cost_hosp=hosps_cost_yr,
+                              cost_maint=copd_cost_yr)
+
+    results <- cbind(base,diags,healthOC,case_detection,medyrs_combos,costs_subcs)
+    
+    
+    
+    # overall results
+    overall <- data.frame(n_agents=output_ex$n_agents_CD,
+                          n_diagnosed=output_ex$n_diagnosed_true_CD,
+                          n_CD_eligible=output_ex$n_case_detection_eligible)
+    
+    
+    # costs <- data.frame(case_detection=input$values$cost$cost_case_detection,
+    #                     OP_diagnosis=input$values$cost$cost_outpatient_diagnosis,
+    #                     SABA=unname(input$values$medication$medication_costs[2]),
+    #                     LAMA=unname(input$values$medication$medication_costs[5]),
+    #                     LAMA_LABA=unname(input$values$medication$medication_costs[7]),
+    #                     ICS_LAMA_LABA=unname(input$values$medication$medication_costs[15]),
+    #                     NRT=input$values$cost$cost_smoking_cessation,
+    #                     exac_mild=input$values$cost$exac_dcost[1],
+    #                     exac_mod=input$values$cost$exac_dcost[2],
+    #                     exac_sev=input$values$cost$exac_dcost[3],
+    #                     exac_vsev=input$values$cost$exac_dcost[4],
+    #                     GOLD1=input$values$cost$bg_cost_by_stage[2],
+    #                     GOLD2=input$values$cost$bg_cost_by_stage[3],
+    #                     GOLD3=input$values$cost$bg_cost_by_stage[4],
+    #                     GOLD4=input$values$cost$bg_cost_by_stage[5])
+    
+    
+    
+    return(list(overall=overall,results=results))
+
+    }
+  
+
+```
+
+
+```{r cost table, echo=FALSE}
+
+
+
+```
+
+
+
+
+The chunk below gives an examples of how you'd adapt the costs.
+
+Here is how all the cost subcategories are calculated. Hopefully with these plus the cose below, you can see what's going on:
+
+Case detection = (number administered case detection X case detection cost) + (number testing positive X outpatient diagnosis cost)
+
+Treatment = (patient years in each medication type X annual medication type cost) + (number receiving NRT X NRT cost)
+
+Hospitalization = (number of severe exacerbation X severe exacerbation cost) + (number of very severe exacerbation X very severe exacerbation cost)
+
+Background cost = number in each GOLD grade X corresponding GOLD grade cost
+
+
+```{r changing costs, echo=FALSE}
+
+  # I saved all the unit costs used in the original analysis in a data frame
+  unit_costs <- readRDS("unit_costs.Rda")
+
+  # I will walk you through an example of how to calculate the costs based on the output
+  # In this example I will just use the standard unit costs (this obviously isn't necessary because the output costs are part of the output as well, but we can use these to check our answers)
+
+  # run model, we will use scenario S1a as an example, I'm using sample size = 10,000
+  s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
+
+  s1a_res <- s1a$results
+  
+  # case detection
+  CD <- cbind(s1a_res$case_detection, s1a_res$CD_true_pos+s1a_res$CD_false_pos) # first column is number administered case detection, second column in number that tested positive and hence would've been sent for OP testing
+  CD_unit_cost <- c(unit_costs$case_detection, unit_costs$OP_diagnosis)
+  CD_cost_yr <- rowSums(t(c(CD_unit_cost)*t(CD))) # this is annual case detection costs, the output we need
+  
+  
+  # treatment
+  treat <- cbind(s1a_res$SABA, s1a_res$LAMA, s1a_res$LAMA_LABA, s1a_res$ICS_LAMA_LABA, s1a_res$NRT)
+  treat_unit_cost <- c(unit_costs$SABA, unit_costs$LAMA, unit_costs$LAMA_LABA, unit_costs$ICS_LAMA_LABA, unit_costs$NRT)
+  treat_cost_yr <- rowSums(t(c(treat_unit_cost)*t(treat)))
+  
+  # hospitalisation
+  hosps <- cbind(s1a_res$exacs_sev, s1a_res$exacs_vsev)
+  hosps_unit_cost <- c(unit_costs$exac_sev, unit_costs$exac_vsev)
+  hosps_cost_yr <- rowSums(t(c(hosps_unit_cost)*t(hosps)))
+  
+  # background medical
+  copd <- cbind(s1a_res$copd_GOLD1, s1a_res$copd_GOLD2, s1a_res$copd_GOLD3, s1a_res$copd_GOLD4)
+  bg_unit_cost <- c(unit_costs$GOLD1, unit_costs$GOLD2, unit_costs$GOLD3, unit_costs$GOLD4)
+  bg_cost_yr <- rowSums(t(c(bg_unit_cost)*t(copd)))
+
+
+  
+  # so for the shiny app, when the user enters their own unit costs inputs, we can simply run the above code (or something similar, I just put this together quickly, I'm sure you can come up with something more efficient) with different input values
+  
+  # The only issue will be that there are some costs that don't fit into any of the categories above. We can see this by comparing the sum of the subcategories with the total costs:
+  
+  s1a_res$cost_total - (CD_cost_yr + treat_cost_yr + hosps_cost_yr + bg_cost_yr)
+  
+  # can see we're missing some. I know why this is and have a solution for working around it, but it'll be easier to explain over a zoom call. So, for now, just assume that the total cost is equal to the four subcategories I have given you
+
+
+
+
+```
+
