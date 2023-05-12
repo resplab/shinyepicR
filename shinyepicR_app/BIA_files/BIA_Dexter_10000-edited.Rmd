@@ -42,7 +42,7 @@ CD_start_cal_year and CD_end_cal_year parameters.
   settings <- get_default_settings()
   
   settings$record_mode <- record_mode["record_mode_none"] # stores the events matrix, switch to "record_mode_none" for faster code
-  settings$n_base_agents <- 18162236 # 2015 estimate tuned to produce 2022 cohort size matching Stats Canada population estimates ### population parameter - could change to 10000 https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
+  settings$n_base_agents <- 10000 # 2015 estimate tuned to produce 2022 cohort size matching Stats Canada population estimates ### population parameter - could change to 10000 https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1710000501
   settings$n_base_agents <- settings$n_base_agents - 1 # -1 since it starts at id=0 
   settings$update_continuous_outcomes_mode <- 1
 

@@ -295,7 +295,7 @@ Background cost = number in each GOLD grade X corresponding GOLD grade cost
   unit_costs <- readRDS("unit_costs.Rda")
 
   # I will walk you through an example of how to calculate the costs based on the output
-  # In this example I will just use the standard unit costs (this obviously isn't necessary because the output costs are part of the output as well, but we can use these to check our answers)
+  # In this example I willIn  just use the standard unit costs (this obviously isn't necessary because the output costs are part of the output as well, but we can use these to check our answers)
 
   # run model, we will use scenario S1a as an example, I'm using sample size = 10,000
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
