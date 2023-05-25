@@ -99,7 +99,7 @@ Function output:
 
   BIA_simul <- function(CD_method, eligibility_criteria){
     
-    CD_method="CDQ17" ; eligibility_criteria="All patients"
+    #CD_method="CDQ17" ; eligibility_criteria="All patients"
 
     if(!CD_method %in% c("None", "CDQ17", "CDQ195", "CDQ165", "FlowMeter", "FlowMeter_CDQ")){
       print("Unknown case detection method")
@@ -175,11 +175,11 @@ Function output:
     )
 
     # number with COPD and diagnosed
-    diags <- data.frame(copd=rowSums(output_ex$n_COPD_by_ctime_severity[,2:5]),
-                        copd_GOLD1=output_ex$n_COPD_by_ctime_severity[,2],
-                        copd_GOLD2=output_ex$n_COPD_by_ctime_severity[,3],
-                        copd_GOLD3=output_ex$n_COPD_by_ctime_severity[,4],
-                        copd_GOLD4=output_ex$n_COPD_by_ctime_severity[,5],
+    diags <- data.frame(copd=rowSums(output_ex$cumul_time_by_ctime_GOLD[,2:5]),
+                        copd_GOLD1=output_ex$cumul_time_by_ctime_GOLD[,2],
+                        copd_GOLD2=output_ex$cumul_time_by_ctime_GOLD[,3],
+                        copd_GOLD3=output_ex$cumul_time_by_ctime_GOLD[,4],
+                        copd_GOLD4=output_ex$cumul_time_by_ctime_GOLD[,5],
                         diags_true=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5]), # diagnosed here is true diagnosed only
                         diags_false=rowSums(output_ex$n_Overdiagnosed_by_ctime_sex),
                         diags_total=rowSums(output_ex$n_Diagnosed_by_ctime_severity[,2:5])+rowSums(output_ex$n_Overdiagnosed_by_ctime_sex)
@@ -206,7 +206,7 @@ Function output:
     hosps_cost <- input$values$cost$exac_dcost[3:4]
     hosps_cost_yr <- rowSums(t(c(hosps_cost)*t(hosps)))
 
-    copd <- output_ex$n_COPD_by_ctime_severity[,2:5] # column 1 is gold grade 0 i.e. no copd
+    copd <- output_ex$cumul_time_by_ctime_GOLD[,2:5]
     main_cost <- input$values$cost$bg_cost_by_stage[2:5]
     copd_cost_yr <- rowSums(t(c(main_cost)*t(copd)))
 
@@ -241,21 +241,21 @@ Function output:
                           n_CD_eligible=output_ex$n_case_detection_eligible)
     
     
-    # costs <- data.frame(case_detection=input$values$cost$cost_case_detection,
-    #                     OP_diagnosis=input$values$cost$cost_outpatient_diagnosis,
-    #                     SABA=unname(input$values$medication$medication_costs[2]),
-    #                     LAMA=unname(input$values$medication$medication_costs[5]),
-    #                     LAMA_LABA=unname(input$values$medication$medication_costs[7]),
-    #                     ICS_LAMA_LABA=unname(input$values$medication$medication_costs[15]),
-    #                     NRT=input$values$cost$cost_smoking_cessation,
-    #                     exac_mild=input$values$cost$exac_dcost[1],
-    #                     exac_mod=input$values$cost$exac_dcost[2],
-    #                     exac_sev=input$values$cost$exac_dcost[3],
-    #                     exac_vsev=input$values$cost$exac_dcost[4],
-    #                     GOLD1=input$values$cost$bg_cost_by_stage[2],
-    #                     GOLD2=input$values$cost$bg_cost_by_stage[3],
-    #                     GOLD3=input$values$cost$bg_cost_by_stage[4],
-    #                     GOLD4=input$values$cost$bg_cost_by_stage[5])
+    costs <- data.frame(case_detection=11.91,#input$values$cost$cost_case_detection,
+                        OP_diagnosis=input$values$cost$cost_outpatient_diagnosis,
+                        SABA=unname(input$values$medication$medication_costs[2]),
+                        LAMA=unname(input$values$medication$medication_costs[5]),
+                        LAMA_LABA=unname(input$values$medication$medication_costs[7]),
+                        ICS_LAMA_LABA=unname(input$values$medication$medication_costs[15]),
+                        NRT=input$values$cost$cost_smoking_cessation,
+                        exac_mild=input$values$cost$exac_dcost[1],
+                        exac_mod=input$values$cost$exac_dcost[2],
+                        exac_sev=input$values$cost$exac_dcost[3],
+                        exac_vsev=input$values$cost$exac_dcost[4],
+                        GOLD1=input$values$cost$bg_cost_by_stage[2],
+                        GOLD2=input$values$cost$bg_cost_by_stage[3],
+                        GOLD3=input$values$cost$bg_cost_by_stage[4],
+                        GOLD4=input$values$cost$bg_cost_by_stage[5])
     
     
     
@@ -263,13 +263,6 @@ Function output:
 
     }
   
-
-```
-
-
-```{r cost table, echo=FALSE}
-
-
 
 ```
 
@@ -295,7 +288,7 @@ Background cost = number in each GOLD grade X corresponding GOLD grade cost
   unit_costs <- readRDS("unit_costs.Rda")
 
   # I will walk you through an example of how to calculate the costs based on the output
-  # In this example I willIn  just use the standard unit costs (this obviously isn't necessary because the output costs are part of the output as well, but we can use these to check our answers)
+  # In this example I will just use the standard unit costs (this obviously isn't necessary because the output costs are part of the output as well, but we can use these to check our answers)
 
   # run model, we will use scenario S1a as an example, I'm using sample size = 10,000
   s1a <- BIA_simul(CD_method = "CDQ17", eligibility_criteria = "All patients")
@@ -323,6 +316,10 @@ Background cost = number in each GOLD grade X corresponding GOLD grade cost
   bg_unit_cost <- c(unit_costs$GOLD1, unit_costs$GOLD2, unit_costs$GOLD3, unit_costs$GOLD4)
   bg_cost_yr <- rowSums(t(c(bg_unit_cost)*t(copd)))
 
+  copd <- s1a_res$cumul_time_by_ctime_GOLD[,2:5]
+  bg_unit_cost <- c(unit_costs$GOLD1, unit_costs$GOLD2, unit_costs$GOLD3, unit_costs$GOLD4)
+  bg_cost_yr <- rowSums(t(c(bg_unit_cost)*t(copd)))
+
 
   
   # so for the shiny app, when the user enters their own unit costs inputs, we can simply run the above code (or something similar, I just put this together quickly, I'm sure you can come up with something more efficient) with different input values
@@ -331,7 +328,7 @@ Background cost = number in each GOLD grade X corresponding GOLD grade cost
   
   s1a_res$cost_total - (CD_cost_yr + treat_cost_yr + hosps_cost_yr + bg_cost_yr)
   
-  # can see we're missing some. I know why this is and have a solution for working around it, but it'll be easier to explain over a zoom call. So, for now, just assume that the total cost is equal to the four subcategories I have given you
+  # can see we're missing some (in the paper, we don't have a background/maintenance costs plot, we have 'outpatient care' which is background plus the bits we're missing). I have a solution for working around it, but it'll be easier to explain over a zoom call. So, for now, just assume the outpatient care is equal to the background subcategory.
 
 
 

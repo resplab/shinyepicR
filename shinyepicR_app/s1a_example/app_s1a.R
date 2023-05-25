@@ -8,43 +8,46 @@ library(dplyr)
 
 # load data
 
-load("results_s1a.RData")
-results_s1a_filtered <- results_s1a %>% 
-  filter(case_detection != 0) %>% 
-  mutate(cost_total_cumul = cumsum(cost_total)) %>% 
-  mutate(cost_case_detection_cumul = cumsum(cost_case_detection)) %>%
-  mutate(cost_treat_cumul = cumsum(cost_treat)) %>%
-  mutate(cost_hosp_cumul = cumsum(cost_hosp)) %>%
-  mutate(cost_maint_cumul = cumsum(cost_maint))
-
+load("s1a_res.RData")
+s1a_res_filtered <- s1a_res %>% 
+  filter(case_detection != 0)
 
 # Define UI 
 ui <- fluidPage(
   titlePanel("S1a data"),
   sidebarLayout(
     sidebarPanel(
-      sliderInput(inputId = "uptake",
-                  label = "Uptake (decimal)",
+      sliderInput(inputId = "year_uptake",
+                  label = "Yearly increase in uptake (initial: 5%)",
                   min = 0,
-                  max = 1,
-                  value = 0.05),
+                  max = 0.1,
+                  value = 0.05, 
+                  step = 0.01),
       selectInput(
         inputId = "y",
         label = "Y variable",
         choices = c(
-          "Total costs" = "cost_total_cumul", 
-          "Case detection costs" = "cost_case_detection_cumul", 
-          "Treatment costs" = "cost_treat_cumul", 
-          "Hospitalization costs" = "cost_hosp_cumul", 
-          "Outpatient care costs" = "cost_maint_cumul"
+          "Total costs" = "cost_total", 
+          "Case detection costs" = "cost_case_detection", 
+          "Treatment costs" = "cost_treat", 
+          "Hospitalization costs" = "cost_hosp", 
+          "Outpatient care costs" = "cost_maint"
         ),
-        selected = "cost_total_cumul"
+        selected = "cost_total"
       ),
+      selectInput(
+        inputId = "scenario", 
+        label = "Cost detection strategy", 
+        choices = c(
+          "S1a", "S1b", "S1c", "S2a", "S3a", "S3b", "S3c", "S3d"
+        ), 
+        selected = "S1a"
+      )
       
     ),
     
     mainPanel(
-      plotOutput("cumul_costs_graph")
+      plotOutput("costs_graph")
     )
   )
 )
@@ -52,10 +55,10 @@ ui <- fluidPage(
 # Define server logic 
 server <- function(input, output) {
   
-  output$cumul_costs_graph <- renderPlot({
-    ggplot(data = results_s1a_filtered, aes_string(x = "year", y = input$y)) + 
+  output$costs_graph <- renderPlot({
+    ggplot(data = s1a_res_filtered, aes_string(x = "year", y = input$y)) + 
       geom_point(color = "red", size = 3) + 
-      geom_line(color = "red", size = 1.5) 
+      geom_line(color = "red", linewidth = 1.25) 
   })
 }
 
