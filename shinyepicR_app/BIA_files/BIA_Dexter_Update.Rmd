@@ -61,7 +61,7 @@ CD_start_cal_year and CD_end_cal_year parameters.
   discount_rate <- 0 # the default
   med_adherence <- 0.7 # the default, adjust for sensitivity analysis
   smoking_adherence <- 0.7 # adherence to NRT; the default, adjust for sensitivity analysis
-  p_case_detection <- c(0.05,0.07,0.09,0.11,0.13) # uptake parameter ###variable
+  p_case_detection <- c(0.05,0.10,0.15,0.20,0.25) # uptake parameter ###variable
   p_correct_overdiagnosis <- 0.67 # did my own validation on this
   price_yr <- 1.030665381 # 2021 average ; was OG 1.03761 = Jan 2022 (so not very different but I think 2021 makes more sense)
   
@@ -479,9 +479,9 @@ bia_all_long_uptake <- bia_all_long %>%
   mutate(uptake_step) %>%
   mutate(uptake_final)
 
-saveRDS(all_overall_uptake, file = "all_overall_10000_005_013.RDa")
-saveRDS(all_results_uptake, file = "all_results_10000_005_013.RDa")
-saveRDS(bia_all_long_uptake, file = "bia_all_long_10000_005_013.RDa")
+saveRDS(all_overall_uptake, file = "all_overall_10000_005_025.RDa")
+saveRDS(all_results_uptake, file = "all_results_10000_005_025.RDa")
+saveRDS(bia_all_long_uptake, file = "bia_all_long_10000_005_025.RDa")
 ```
 
 ### Check work ###
@@ -679,28 +679,29 @@ s1a_test_res <- s1a_test$results
 
 # case detection
 CD_test <- cbind(s1a_test_res$case_detection, s1a_test_res$CD_true_pos+s1a_test_res$CD_false_pos) 
-CD_unit_cost_test <- c(s1a_test_res$UC_case_detection[1], s1a_test_res$UC_OP_diagnosis[1]) 
-CD_cost_yr_test <- rowSums(t(c(CD_unit_cost_test)*t(CD_test))) 
+# CD_unit_cost_test <- c(s1a_test_res$UC_case_detection[1], s1a_test_res$UC_OP_diagnosis[1]) 
+CD_unit_cost_test <- c(10, 60)
+# CD_cost_yr_test <- rowSums(t(c(CD_unit_cost_test)*t(CD_test))) 
 s1a_test_res <- s1a_test_res %>% 
   mutate(cost_case_detection = rowSums(t(c(CD_unit_cost_test)*t(CD_test))))
 
 # treatment
 treat <- cbind(s1a_test_res$SABA, s1a_test_res$LAMA, s1a_test_res$LAMA_LABA, s1a_test_res$ICS_LAMA_LABA, s1a_test_res$NRT)
-treat_unit_cost <- c(s1a_test_res$SABA, s1a_test_res$LAMA, s1a_test_res$LAMA_LABA, s1a_test_res$ICS_LAMA_LABA, s1a_test_res$NRT)
-treat_cost_yr <- rowSums(t(c(treat_unit_cost)*t(treat)))
+treat_uc <- c(s1a_test_res$SABA[1], s1a_test_res$LAMA[1], s1a_test_res$LAMA_LABA[1], s1a_test_res$ICS_LAMA_LABA[1], s1a_test_res$NRT[1])
+treat_cost_yr <- rowSums(t(c(treat_uc)*t(treat)))
 
 # hospitalisation
 hosps <- cbind(s1a_test_res$exacs_sev, s1a_test_res$exacs_vsev)
-hosps_unit_cost <- c(s1a_test_res$exac_sev, s1a_test_res$exac_vsev)
-hosps_cost_yr <- rowSums(t(c(hosps_unit_cost)*t(hosps)))
+hosps_uc <- c(s1a_test_res$exac_sev[1], s1a_test_res$exac_vsev[1])
+hosps_cost_yr <- rowSums(t(c(hosps_uc)*t(hosps)))
 
 # background medical
-copd <- cbind(s1a_test_res$copd_GOLD1, s1a_test_res$copd_GOLD2, s1a_test_res$copd_GOLD3, s1a_test_res$copd_GOLD4) # replace s1a_test_res with my own results 
-bg_unit_cost <- c(s1a_test_res$GOLD1, s1a_test_res$GOLD2, s1a_test_res$GOLD3, s1a_test_res$GOLD4)
-bg_cost_yr <- rowSums(t(c(bg_unit_cost)*t(copd)))
+copd <- cbind(s1a_test_res$copd_GOLD1, s1a_test_res$copd_GOLD2, s1a_test_res$copd_GOLD3, s1a_test_res$copd_GOLD4)
+bg_uc <- c(s1a_test_res$GOLD1[1], s1a_test_res$GOLD2[1], s1a_test_res$GOLD3[1], s1a_test_res$GOLD4[1])
+bg_cost_yr <- rowSums(t(c(bg_uc)*t(copd)))
 
-copd <- s1a_test_res$cumul_time_by_ctime_GOLD[,2:5]
-bg_unit_cost <- c(s1a_test_res$GOLD1, s1a_test_res$GOLD2, s1a_test_res$GOLD3, s1a_test_res$GOLD4)
-bg_cost_yr <- rowSums(t(c(bg_unit_cost)*t(copd)))
+# copd <- s1a_test_res$cumul_time_by_ctime_GOLD[,2:5]
+# bg_unit_cost <- c(s1a_test_res$GOLD1, s1a_test_res$GOLD2, s1a_test_res$GOLD3, s1a_test_res$GOLD4)
+# bg_cost_yr <- rowSums(t(c(bg_unit_cost)*t(copd)))
 ```
 
