@@ -157,7 +157,7 @@ Function output:
     input$values$cost$cost_gp_visit <- input$values$cost$cost_gp_visit*price_yr
     input$values$medication$medication_costs <- input$values$medication$medication_costs*price_yr
 
-    set.seed(333)
+    set.seed()
     run(input = input$values)
 
     # outputs
@@ -265,6 +265,9 @@ Function output:
                 UC_GOLD2=input$values$cost$bg_cost_by_stage[3],
                 UC_GOLD3=input$values$cost$bg_cost_by_stage[4],
                 UC_GOLD4=input$values$cost$bg_cost_by_stage[5])
+    
+    # 11.91 is the time cost (gp)
+    # Flowmeter and CDQ 
     
     #include costs into results df 
     results <- cbind(results, costs)

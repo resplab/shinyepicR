@@ -153,7 +153,7 @@ ui <- fluidPage(
       )
     ),
     
-    ### must update the first line of each legend
+    ### must update the first line of each legend, create a single str object 
     mainPanel(
       tabsetPanel(
         tabPanel("Total costs",
