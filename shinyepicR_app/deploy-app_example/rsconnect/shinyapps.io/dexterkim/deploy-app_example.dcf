@@ -1,0 +1,11 @@
+name: deploy-app_example
+title:
+username:
+account: dexterkim
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9212560
+bundleId: 7280075
+url: https://dexterkim.shinyapps.io/deploy-app_example/
+when: 1685423644.86806
+lastSyncTime: 1685423644.86807

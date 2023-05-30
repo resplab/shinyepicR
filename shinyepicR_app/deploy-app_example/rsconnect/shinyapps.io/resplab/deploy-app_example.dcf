@@ -1,0 +1,11 @@
+name: deploy-app_example
+title:
+username:
+account: resplab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9212661
+bundleId: 7280159
+url: https://resplab.shinyapps.io/deploy-app_example/
+when: 1685425881.65839
+lastSyncTime: 1685425881.65842

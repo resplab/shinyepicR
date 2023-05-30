@@ -62,12 +62,20 @@ all_overall_10000_005_025 <- readRDS("data_10000/all_overall_10000_005_025.RDa")
 all_results_10000_005_025 <- readRDS("data_10000/all_results_10000_005_025.RDa")
 bia_all_long_10000_005_025 <- readRDS("data_10000/bia_all_long_10000_005_025.RDa")
 
-#rbind dfs 
+# rbind dfs 
 all_overall_rbind <- rbind(all_overall_10000_005_013, all_overall_10000_005_025)
 all_results_rbind <- rbind(all_results_10000_005_013, all_results_10000_005_025)
 all_results_rbind_noedit <- all_results_rbind
 bia_all_long_rbind <- rbind(bia_all_long_10000_005_013, bia_all_long_10000_005_025)
 
+# figure caption
+fig_cap <- "Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
+           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
+           Negative additional costs indicate cost savings. 
+           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
+           S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
+           S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
+           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."
 
 # Define UI 
 ui <- fluidPage(
@@ -158,53 +166,23 @@ ui <- fluidPage(
       tabsetPanel(
         tabPanel("Total costs",
            plotOutput("p1"),
-           p(em("Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
-           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
-           Negative additional costs indicate cost savings. 
-           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
-           S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
-           S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
-           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."))
+           p(em(fig_cap))
         ),
         tabPanel("Case detection costs",
            plotOutput("p2"),
-           p(em("Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
-           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
-           Negative additional costs indicate cost savings. 
-           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
-           S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
-           S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
-           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."))
+           p(em(fig_cap))
         ),
         tabPanel("Treatment costs",
            plotOutput("p3"),
-           p(em("Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
-           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
-           Negative additional costs indicate cost savings. 
-           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
-           S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
-           S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
-           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."))
+           p(em(fig_cap))
         ),
         tabPanel("Hospitalization costs",
            plotOutput("p4"),
-           p(em("Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
-           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
-           Negative additional costs indicate cost savings. 
-           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
-           S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
-           S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
-           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."))
+           p(em(fig_cap))
         ),
         tabPanel("Outpatient care costs",
            plotOutput("p5"),
-           p(em("Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
-           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
-           Negative additional costs indicate cost savings. 
-           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
-           S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
-           S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
-           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."))
+           p(em(fig_cap))
         ),
         tabPanel("Total costs (table)",
           dataTableOutput("bia_total"),

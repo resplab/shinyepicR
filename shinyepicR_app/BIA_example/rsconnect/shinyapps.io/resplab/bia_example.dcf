@@ -1,0 +1,11 @@
+name: bia_example
+title:
+username:
+account: resplab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9212649
+bundleId: 7280131
+url: https://resplab.shinyapps.io/bia_example/
+when: 1685425295.40175
+lastSyncTime: 1685425295.40177
