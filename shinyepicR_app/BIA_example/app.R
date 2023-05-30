@@ -1,6 +1,7 @@
 # load packages
 
 library(shiny)
+library(shinyBS)
 library(tidyverse)
 library(tools)
 library(shinythemes)
@@ -65,100 +66,71 @@ bia_all_long_10000_005_025 <- readRDS("data_10000/bia_all_long_10000_005_025.RDa
 # rbind dfs 
 all_overall_rbind <- rbind(all_overall_10000_005_013, all_overall_10000_005_025)
 all_results_rbind <- rbind(all_results_10000_005_013, all_results_10000_005_025)
-all_results_rbind_noedit <- all_results_rbind
 bia_all_long_rbind <- rbind(bia_all_long_10000_005_013, bia_all_long_10000_005_025)
 
 # figure caption
-fig_cap <- "Figure 2: Annual total (top), case detection (middle left), treatment (middle right), hospitalisation (bottom left), 
-           and outpatient care (bottom right) additional costs (million $) compared to no case detection baseline scenario. 
-           Negative additional costs indicate cost savings. 
+fig_cap <- "Negative additional costs indicate cost savings. 
            S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
            S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
            S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
-           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history. Corresponding results tables can be found in Appendix 2."
+           S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history."
 
 # Define UI 
 ui <- fluidPage(
   theme = shinytheme("cerulean"),
-  titlePanel("BIA EpicR"),
+  titlePanel("Budget impact analysis of adopting primary care-based COPD case detection in the Canadian general population"),
   sidebarLayout(
     sidebarPanel(
-      selectInput(
+      radioButtons(
         inputId = "uptake_step", 
-        label = "Yearly increase in uptake (initial value is 0.05, or 5%)", 
+        label = "Uptake", 
         choices = c(unique(bia_all_long_rbind$uptake_step)), 
         selected = bia_all_long_rbind$uptake_step[1]
       ),
-      # unit costs 
+      # unit costs (values taken from Table 2)
       numericInput(
-        inputId = "UC_cd", 
-        label = "Unit cost of case detection", 
-        value = all_results_rbind_noedit$UC_case_detection[1]
+        inputId = "UC_cd_time", 
+        label = "Cost of administration of COPD Diagnostic Questionnaire", 
+        value = 11.91
+      ),
+      numericInput(
+        inputId = "UC_cd_fm_bronch", 
+        label = "Cost of flow-meter with bronchodilator", 
+        value = 30.81
+      ),
+      numericInput(
+        inputId = "UC_cd_fm", 
+        label = "Cost of flow-meter (without bronchodilator)", 
+        value = 24.68
       ),
       numericInput(
         inputId = "UC_OPd",
-        label = "Unit cost of OP diagnosis", 
-        value = all_results_rbind_noedit$UC_OP_diagnosis[1]
-      ),
-      numericInput(
-        inputId = "saba_UC",
-        label = "Unit cost of SABA", 
-        value = all_results_rbind_noedit$UC_SABA[1]
-      ),
-      numericInput(
-        inputId = "lama_UC",
-        label = "Unit cost of LAMA", 
-        value = all_results_rbind_noedit$UC_LAMA[1]
-      ),
-      numericInput(
-        inputId = "lama_laba_UC",
-        label = "Unit cost of LAMA+LABA", 
-        value = all_results_rbind_noedit$UC_LAMA_LABA[1]
-      ),
-      numericInput(
-        inputId = "ics_lama_laba_UC",
-        label = "Unit cost of ICS+LAMA+LABA", 
-        value = all_results_rbind_noedit$UC_ICS_LAMA_LABA[1]
-      ),
-      numericInput(
-        inputId = "nrt_UC",
-        label = "Unit cost of NRT", 
-        value = all_results_rbind_noedit$UC_NRT[1]
-      ),
-      numericInput(
-        inputId = "exac_sev_UC",
-        label = "Unit cost of severe exacerbation", 
-        value = all_results_rbind_noedit$UC_exac_sev[1]
-      ),
-      numericInput(
-        inputId = "exac_vsev_UC",
-        label = "Unit cost of very-severe exacerbation", 
-        value = all_results_rbind_noedit$UC_exac_vsev[1]
-      ),
-      numericInput(
-        inputId = "gold1_UC",
-        label = "Unit cost of GOLD1", 
-        value = all_results_rbind_noedit$UC_GOLD1[1]
-      ),
-      numericInput(
-        inputId = "gold2_UC",
-        label = "Unit cost of GOLD2", 
-        value = all_results_rbind_noedit$UC_GOLD2[1]
-      ),
-      numericInput(
-        inputId = "gold3_UC",
-        label = "Unit cost of GOLD3", 
-        value = all_results_rbind_noedit$UC_GOLD3[1]
-      ),
-      numericInput(
-        inputId = "gold4_UC",
-        label = "Unit cost of GOLD4", 
-        value = all_results_rbind_noedit$UC_GOLD4[1]
+        label = "Outpatient diagnosis cost", 
+        value = round(all_results_rbind$UC_OP_diagnosis[1], 2)
       ),
       actionButton(
         inputId = "update_ucs",
-        label = "Update unit costs"
+        label = "Run"
+      ),
+      bsTooltip(
+        id = "uptake_step", 
+        title = "Yearly uptake in %",
+        placement = "right", 
+        options = list(container = "body")
+      ),
+      bsTooltip(
+        id = "UC_cd_time", 
+        title = "Administering case detection was costed at 34% of a 15-minute routine primary care visit",
+        placement = "right", 
+        options = list(container = "body")
+      ),
+      bsTooltip(
+        id = "UC_OPd", 
+        title = "Outpatient diagnosis includes the cost of diagnostic spirometry plus a primary care visit to interpret the results",
+        placement = "right", 
+        options = list(container = "body")
       )
+
     ),
     
     ### must update the first line of each legend, create a single str object 
@@ -166,27 +138,29 @@ ui <- fluidPage(
       tabsetPanel(
         tabPanel("Total costs",
            plotOutput("p1"),
-           p(em(fig_cap))
+           p(em(paste("Figure: Annual total costs (million $) compared to no case detection baseline scenario.", fig_cap)))
         ),
         tabPanel("Case detection costs",
            plotOutput("p2"),
-           p(em(fig_cap))
+           p(em(paste("Figure: Annual case detection costs (million $) compared to no case detection baseline scenario.", fig_cap)))
         ),
         tabPanel("Treatment costs",
            plotOutput("p3"),
-           p(em(fig_cap))
+           p(em(paste("Figure: Annual treatment costs (million $) compared to no case detection baseline scenario.", fig_cap)))
         ),
         tabPanel("Hospitalization costs",
            plotOutput("p4"),
-           p(em(fig_cap))
+           p(em(paste("Figure: Annual hospitalization costs (million $) compared to no case detection baseline scenario.", fig_cap)))
         ),
         tabPanel("Outpatient care costs",
            plotOutput("p5"),
-           p(em(fig_cap))
+           p(em(paste("Figure: Annual outpatient care costs (million $) compared to no case detection baseline scenario.", fig_cap)))
         ),
         tabPanel("Total costs (table)",
           dataTableOutput("bia_total"),
-          dataTableOutput("dataTable"))
+          dataTableOutput("dataTable")
+        ),
+        tabPanel("About")
       )
     )
   )
@@ -195,49 +169,32 @@ ui <- fluidPage(
 # Define server logic 
 server <- function(input, output) {
   
+  #update unit costs (uc)
   reactiveData <- eventReactive(input$update_ucs, {
     
     #update all_results_rbind with new ucs
     all_results_rbind <- all_results_rbind %>%
       filter(round(uptake_step, 2)==input$uptake_step) #filter all_results_rbind by uptake parameter
     
-    all_results_rbind$UC_case_detection <- input$UC_cd
-    all_results_rbind$UC_OP_diagnosis <- input$UC_OPd
-    all_results_rbind$UC_SABA <- input$saba_UC
-    all_results_rbind$UC_LAMA <- input$lama_UC
-    all_results_rbind$UC_LAMA_LABA <- input$lama_laba_UC
-    all_results_rbind$UC_ICS_LAMA_LABA <- input$ics_lama_laba_UC
-    all_results_rbind$UC_NRT <- input$nrt_UC
-    all_results_rbind$UC_exac_sev <- input$exac_sev_UC
-    all_results_rbind$UC_exac_vsev <- input$exac_vsev_UC
-    all_results_rbind$UC_GOLD1 <- input$gold1_UC
-    all_results_rbind$UC_GOLD2 <- input$gold2_UC
-    all_results_rbind$UC_GOLD3 <- input$gold3_UC
-    all_results_rbind$UC_GOLD4 <- input$gold4_UC
+    all_results_rbind <- all_results_rbind %>%
+      mutate(CD_uc = case_when(
+        scenario=="s10" ~ 0,
+        scenario=="s1a" ~ input$UC_cd_time,
+        scenario=="s1b" ~ input$UC_cd_time + input$UC_cd_fm_bronch,
+        scenario=="s1c" ~ 2*input$UC_cd_time + input$UC_cd_fm_bronch,
+        scenario=="s2a" ~ input$UC_cd_time + input$UC_cd_fm,
+        scenario=="s3a" ~ input$UC_cd_time,
+        scenario=="s3b" ~ input$UC_cd_time,
+        scenario=="s3c" ~ input$UC_cd_time + input$UC_cd_fm,
+        scenario=="s3d" ~ 2*input$UC_cd_time + input$UC_cd_fm_bronch
+      )) %>%
+      mutate(OPd_uc = input$UC_OPd)
     
-    # recalculate yearly costs based on new uc 
-    # cd
-    CD <- cbind(all_results_rbind$case_detection, all_results_rbind$CD_true_pos+all_results_rbind$CD_false_pos) #case detections
-    CD_uc <- c(all_results_rbind$UC_case_detection[1], all_results_rbind$UC_OP_diagnosis[1]) 
-    
-    # tx
-    treat <- cbind(all_results_rbind$SABA, all_results_rbind$LAMA, all_results_rbind$LAMA_LABA, all_results_rbind$ICS_LAMA_LABA, all_results_rbind$NRT)
-    treat_uc <- c(all_results_rbind$UC_SABA[1], all_results_rbind$UC_LAMA[1], all_results_rbind$UC_LAMA_LABA[1], all_results_rbind$UC_ICS_LAMA_LABA[1], all_results_rbind$UC_NRT[1])
-    
-    # hosps
-    hosps <- cbind(all_results_rbind$exacs_sev, all_results_rbind$exacs_vsev)
-    hosps_uc <- c(all_results_rbind$UC_exac_sev[1], all_results_rbind$UC_exac_vsev[1])
-    
-    # background
-    copd <- cbind(all_results_rbind$copd_GOLD1, all_results_rbind$copd_GOLD2, all_results_rbind$copd_GOLD3, all_results_rbind$copd_GOLD4)
-    bg_uc <- c(all_results_rbind$UC_GOLD1[1], all_results_rbind$UC_GOLD2[1], all_results_rbind$UC_GOLD3[1], all_results_rbind$UC_GOLD4[1])
-    
-    # recalculate
-    all_results_rbind <- all_results_rbind %>% 
-      mutate(cost_case_detection = rowSums(t(c(CD_uc)*t(CD)))) %>% 
-      mutate(cost_treat = rowSums(t(c(treat_uc)*t(treat)))) %>% 
-      mutate(cost_hosp = rowSums(t(c(hosps_uc)*t(hosps)))) %>%
-      mutate(cost_maint = rowSums(t(c(bg_uc)*t(copd))))
+    # recalculate cost_total and cost_case_detection 
+    all_results_rbind <- all_results_rbind %>%
+      mutate(cost_total = cost_total - cost_case_detection) %>%
+      mutate(cost_case_detection = case_detection*CD_uc + (CD_true_pos+CD_false_pos)*OPd_uc) %>%
+      mutate(cost_total = cost_total + cost_case_detection)
     
     # rerun bia_table
     bia_s10_s1a <- bia_table(all_results_rbind,"s10","s1a")
@@ -266,6 +223,7 @@ server <- function(input, output) {
     return(bia_all_long_rbind)
   })
   
+  # total costs table
   output$bia_total <- renderDataTable({
     bia_all_long_rbind <- reactiveData() # access output of eventReactive
     bia_all_long_rbind %>%
@@ -275,11 +233,7 @@ server <- function(input, output) {
       pivot_wider(names_from=scenario,values_from=total_CAD)
   })
   
-  output$dataTable <- renderDataTable({
-    value <- reactiveData()
-    value
-  })
-  
+  # plots
   output$p1 <- renderPlot({
     bia_all_long_rbind <- reactiveData()
     ggplot(bia_all_long_rbind %>% filter(cost_group=="bia_total" & scenario!="s10"), 
@@ -293,9 +247,9 @@ server <- function(input, output) {
       geom_line() +
       theme_bw() +
       theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
-            legend.text=element_text(size=12),legend.title=element_text(size=12),
-            plot.margin = margin(2, 10, 0, 2),
-            legend.position = "none") 
+            legend.text=element_text(size=12),legend.title=element_text(size=12), legend.position = "bottom",
+            plot.margin = margin(2, 10, 0, 2)) +
+            guides(colour = guide_legend(nrow = 1)) 
   })
   
   output$p2 <- renderPlot({
@@ -310,7 +264,7 @@ server <- function(input, output) {
       geom_line() +
       theme_bw() + 
       theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
-            legend.text=element_text(size=12),legend.title=element_text(size=12),
+            legend.text=element_text(size=12),legend.title=element_text(size=12), legend.position = "bottom",
             plot.margin = margin(2, 10, 0, 2)) + 
       guides(colour = guide_legend(nrow = 1)) 
   })
@@ -327,7 +281,7 @@ server <- function(input, output) {
       geom_line() +
       theme_bw() +
       theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
-            legend.text=element_text(size=12),legend.title=element_text(size=12),
+            legend.text=element_text(size=12),legend.title=element_text(size=12), legend.position = "bottom",
             plot.margin = margin(2, 10, 0, 2)) + 
       guides(colour = guide_legend(nrow = 1)) 
   })
@@ -345,7 +299,7 @@ server <- function(input, output) {
       geom_hline(yintercept=0, linetype="dashed", color = "darkgrey") +
       theme_bw() + 
       theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
-            legend.text=element_text(size=12),legend.title=element_text(size=12),
+            legend.text=element_text(size=12),legend.title=element_text(size=12), legend.position = "bottom",
             plot.margin = margin(2, 10, 0, 2)) + 
       guides(colour = guide_legend(nrow = 1)) 
   })
@@ -362,7 +316,7 @@ server <- function(input, output) {
       geom_line() +
       theme_bw() + 
       theme(axis.text=element_text(size=12),axis.title=element_text(size=14),
-            legend.text=element_text(size=12),legend.title=element_text(size=12),
+            legend.text=element_text(size=12),legend.title=element_text(size=12), legend.position = "bottom",
             plot.margin = margin(2, 10, 0, 2)) + 
       guides(colour = guide_legend(nrow = 1))
   })
