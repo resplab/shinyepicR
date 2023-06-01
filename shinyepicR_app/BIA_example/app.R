@@ -54,23 +54,22 @@ bia_table <- function(results,base_scenario,alt_scenario){
 
 # load and wrangle data ### edit this so that I only have to load in 3 dfs to the app. No point having all of the filtering here. 
 # 0.05 to 0.13 
-all_overall_10000_005_013 <- readRDS("data_10000/all_overall_10000_005_013.RDa")
-all_results_10000_005_013 <- readRDS("data_10000/all_results_10000_005_013.RDa")
-bia_all_long_10000_005_013 <- readRDS("data_10000/bia_all_long_10000_005_013.RDa")
+all_overall_18mio_001_005 <- readRDS("data_18mio/all_overall_18mio_001_005.RDa")
+all_results_18mio_001_005 <- readRDS("data_18mio/all_results_18mio_001_005.RDa")
+bia_all_long_18mio_001_005 <- readRDS("data_18mio/bia_all_long_18mio_001_005.RDa")
 
 # 0.05 to 0.25
-all_overall_10000_005_025 <- readRDS("data_10000/all_overall_10000_005_025.RDa")
-all_results_10000_005_025 <- readRDS("data_10000/all_results_10000_005_025.RDa")
-bia_all_long_10000_005_025 <- readRDS("data_10000/bia_all_long_10000_005_025.RDa")
+all_overall_18mio_005_025 <- readRDS("data_18mio/all_overall_18mio_005_025.RDa")
+all_results_18mio_005_025 <- readRDS("data_18mio/all_results_18mio_005_025.RDa")
+bia_all_long_18mio_005_025 <- readRDS("data_18mio/bia_all_long_18mio_005_025.RDa")
 
 # rbind dfs 
-all_overall_rbind <- rbind(all_overall_10000_005_013, all_overall_10000_005_025)
-all_results_rbind <- rbind(all_results_10000_005_013, all_results_10000_005_025)
-bia_all_long_rbind <- rbind(bia_all_long_10000_005_013, bia_all_long_10000_005_025)
+all_overall_rbind <- rbind(all_overall_18mio_001_005, all_overall_18mio_005_025)
+all_results_rbind <- rbind(all_results_18mio_001_005, all_results_18mio_005_025)
+bia_all_long_rbind <- rbind(bia_all_long_18mio_001_005, bia_all_long_18mio_005_025)
 
-# figure caption
-fig_cap <- "Negative additional costs indicate cost savings. 
-           S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
+# figure legend
+scen_leg <- "S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
            S2a flow meter (without bronchodilator) among symptomatic patients; S3a CDQ ≥ 19.5 points among patients aged ≥50 years with a smoking history; 
            S3b CDQ ≥ 16.5 points among patients aged ≥50 years with a smoking history; S3c flow meter (without bronchodilator) among patients aged ≥50 years with a smoking history, 
            S3d CDQ ≥ 17 points + flow meter (with bronchodilator) among patients aged ≥50 years with a smoking history."
@@ -83,8 +82,8 @@ ui <- fluidPage(
     sidebarPanel(
       radioButtons(
         inputId = "uptake_step", 
-        label = "Uptake", 
-        choices = c(unique(bia_all_long_rbind$uptake_step)), 
+        label = "Physician uptake (Starting value and yearly increase are the same)", 
+        choices = c(unique(bia_all_long_rbind$uptake_step)),
         selected = bia_all_long_rbind$uptake_step[1]
       ),
       # unit costs (values taken from Table 2)
@@ -114,7 +113,8 @@ ui <- fluidPage(
       ),
       bsTooltip(
         id = "uptake_step", 
-        title = "Yearly uptake in %",
+        title = "Physician uptake as a decimal. This number specifies the starting uptake and yearly increase. 
+                For ex, 0.05 means 5% uptake in 2021, and 5% increase in uptake each year (25% uptake in 2026)",
         placement = "right", 
         options = list(container = "body")
       ),
@@ -138,27 +138,27 @@ ui <- fluidPage(
       tabsetPanel(
         tabPanel("Total costs",
            plotOutput("p1"),
-           p(em(paste("Figure: Annual total costs (million $) compared to no case detection baseline scenario.", fig_cap)))
+           p(em(paste("Figure: Annual total costs (million $) compared to no case detection baseline scenario. Negative additional costs indicate cost savings.", scen_leg)))
         ),
         tabPanel("Case detection costs",
            plotOutput("p2"),
-           p(em(paste("Figure: Annual case detection costs (million $) compared to no case detection baseline scenario.", fig_cap)))
+           p(em(paste("Figure: Annual case detection costs (million $) compared to no case detection baseline scenario. Negative additional costs indicate cost savings.", scen_leg)))
         ),
         tabPanel("Treatment costs",
            plotOutput("p3"),
-           p(em(paste("Figure: Annual treatment costs (million $) compared to no case detection baseline scenario.", fig_cap)))
+           p(em(paste("Figure: Annual treatment costs (million $) compared to no case detection baseline scenario. Negative additional costs indicate cost savings.", scen_leg)))
         ),
         tabPanel("Hospitalization costs",
            plotOutput("p4"),
-           p(em(paste("Figure: Annual hospitalization costs (million $) compared to no case detection baseline scenario.", fig_cap)))
+           p(em(paste("Figure: Annual hospitalization costs (million $) compared to no case detection baseline scenario. Negative additional costs indicate cost savings.", scen_leg)))
         ),
         tabPanel("Outpatient care costs",
            plotOutput("p5"),
-           p(em(paste("Figure: Annual outpatient care costs (million $) compared to no case detection baseline scenario.", fig_cap)))
+           p(em(paste("Figure: Annual outpatient care costs (million $) compared to no case detection baseline scenario. Negative additional costs indicate cost savings.", scen_leg)))
         ),
         tabPanel("Total costs (table)",
           dataTableOutput("bia_total"),
-          dataTableOutput("dataTable")
+          p(em(paste("Table: Total budget impact (no case detection – case detection) results. Negative budget impact indicates budget expansion.", scen_leg)))
         ),
         tabPanel("About")
       )
@@ -230,7 +230,19 @@ server <- function(input, output) {
       filter(year!="2021") %>%
       group_by(scenario,cost_group) %>%
       summarize(total_CAD=sum(CAD)) %>%
-      pivot_wider(names_from=scenario,values_from=total_CAD)
+      pivot_wider(names_from=scenario,values_from=total_CAD) %>%
+      mutate(cost_group = c("Total cost of case detection", 
+                            "Total cost of hospitalizations",
+                            "Total cost of maintenance",
+                            "Total cost of outpatient care", #cost_other
+                            "Total cost",
+                            "Total cost of treatment",
+                            "Budget impact of case detection",
+                            "Budget impact of hospitalizations",
+                            "Budget impact of maintenance",
+                            "Budget impact of outpatient care",
+                            "Budget impact (total)",
+                            "Budget impact of treatment"))
   })
   
   # plots
