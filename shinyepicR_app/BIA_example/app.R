@@ -52,21 +52,48 @@ bia_table <- function(results,base_scenario,alt_scenario){
   
 }
 
-# load and wrangle data ### edit this so that I only have to load in 3 dfs to the app. No point having all of the filtering here. 
-# 0.05 to 0.13 
+### load and wrangle data ### edit this so that I only have to load in 3 dfs to the app. No point having all of the filtering here. 
+# 0.01
 all_overall_18mio_001_005 <- readRDS("data_18mio/all_overall_18mio_001_005.RDa")
 all_results_18mio_001_005 <- readRDS("data_18mio/all_results_18mio_001_005.RDa")
 bia_all_long_18mio_001_005 <- readRDS("data_18mio/bia_all_long_18mio_001_005.RDa")
 
-# 0.05 to 0.25
+# 0.02
+all_overall_18mio_002_010 <- readRDS("data_18mio/all_overall_18mio_002_010.RDa")
+all_results_18mio_002_010 <- readRDS("data_18mio/all_results_18mio_002_010.RDa")
+bia_all_long_18mio_002_010 <- readRDS("data_18mio/bia_all_long_18mio_002_010.RDa")
+
+# 0.05
 all_overall_18mio_005_025 <- readRDS("data_18mio/all_overall_18mio_005_025.RDa")
 all_results_18mio_005_025 <- readRDS("data_18mio/all_results_18mio_005_025.RDa")
 bia_all_long_18mio_005_025 <- readRDS("data_18mio/bia_all_long_18mio_005_025.RDa")
 
+# 0.08
+all_overall_18mio_008_040 <- readRDS("data_18mio/all_overall_18mio_008_040.RDa")
+all_results_18mio_008_040 <- readRDS("data_18mio/all_results_18mio_008_040.RDa")
+bia_all_long_18mio_008_040 <- readRDS("data_18mio/bia_all_long_18mio_008_040.RDa")
+
+# 0.10
+all_overall_18mio_010_050 <- readRDS("data_18mio/all_overall_18mio_010_050.RDa")
+all_results_18mio_010_050 <- readRDS("data_18mio/all_results_18mio_010_050.RDa")
+bia_all_long_18mio_010_050 <- readRDS("data_18mio/bia_all_long_18mio_010_050.RDa")
+
 # rbind dfs 
-all_overall_rbind <- rbind(all_overall_18mio_001_005, all_overall_18mio_005_025)
-all_results_rbind <- rbind(all_results_18mio_001_005, all_results_18mio_005_025)
-bia_all_long_rbind <- rbind(bia_all_long_18mio_001_005, bia_all_long_18mio_005_025)
+all_overall_rbind <- rbind(all_overall_18mio_001_005, 
+                           all_overall_18mio_002_010,
+                           all_overall_18mio_005_025,
+                           all_overall_18mio_008_040,
+                           all_overall_18mio_010_050)
+all_results_rbind <- rbind(all_results_18mio_001_005,
+                           all_results_18mio_002_010,
+                           all_results_18mio_005_025,
+                           all_results_18mio_008_040,
+                           all_results_18mio_010_050)
+bia_all_long_rbind <- rbind(bia_all_long_18mio_001_005, 
+                            bia_all_long_18mio_002_010,
+                            bia_all_long_18mio_005_025,
+                            bia_all_long_18mio_008_040,
+                            bia_all_long_18mio_010_050)
 
 # figure legend
 scen_leg <- "S1a CDQ ≥ 17 points for all patients; S1b flow meter (with bronchodilator) all patients; S1c CDQ ≥ 17 points + flow meter (with bronchodilator) all patients; 
@@ -160,7 +187,8 @@ ui <- fluidPage(
           dataTableOutput("bia_total"),
           p(em(paste("Table: Total budget impact (no case detection – case detection) results. Negative budget impact indicates budget expansion.", scen_leg)))
         ),
-        tabPanel("About")
+        tabPanel("About",
+          p)
       )
     )
   )
