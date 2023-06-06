@@ -5,9 +5,9 @@ account: resplab
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 9212696
-bundleId: 7296786
+bundleId: 7311669
 url: https://resplab.shinyapps.io/bia-copd-mountain-2023/
-when: 1685713521.58008
-lastSyncTime: 1685713521.58012
+when: 1686063960.96782
+lastSyncTime: 1686063960.96783
 asMultiple: FALSE
 asStatic: FALSE

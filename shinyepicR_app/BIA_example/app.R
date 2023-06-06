@@ -111,7 +111,7 @@ ui <- fluidPage(
         inputId = "uptake_step", 
         label = "Physician uptake (Starting value and yearly increase are the same)", 
         choices = c(unique(bia_all_long_rbind$uptake_step)),
-        selected = bia_all_long_rbind$uptake_step[1]
+        selected = unique(bia_all_long_rbind$uptake_step)[3]
       ),
       # unit costs (values taken from Table 2)
       numericInput(
@@ -188,7 +188,16 @@ ui <- fluidPage(
           p(em(paste("Table: Total budget impact (no case detection – case detection) results. Negative budget impact indicates budget expansion.", scen_leg)))
         ),
         tabPanel("About",
-          p)
+          h1("About"),
+          p("This web application is for analyzing budget impact of adopting primary care-based COPD case detection in the Canadian general population. 
+            The analysis was performed using the Evaluation Platform in COPD (EPIC) which is a microsimulation model of COPD in Canadians aged 40 years and above. 
+            Please refer to the manuscript for details on the model."), 
+          h1("Citation"), 
+          p(a("Rachael Mountain, MSC, ", href = "https://www.lancaster.ac.uk/health-and-medicine/about-us/people/rachael-mountain"), 
+            a("Kate M. Johnson, PhD", href = "https://resp.core.ubc.ca/team/Kate_Johnson")),
+          h1("Credits"),
+          p("This web app was created by Dexter Kim at the University of British Columbia, Faculty of Medicine")
+          )
       )
     )
   )
